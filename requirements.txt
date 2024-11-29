@@ -1,0 +1,4 @@
+azure-functions
+stripe
+azure-cosmos
+python-dotenv

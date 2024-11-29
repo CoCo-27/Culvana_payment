@@ -1,1 +1,0 @@
-# Culvana_payment
