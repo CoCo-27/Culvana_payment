@@ -1,28 +1,38 @@
+# add_location/__init__.py
 import azure.functions as func
 import json
 import logging
+from datetime import datetime, timezone
 from shared_code.db_client import CosmosDBClient
+from shared_code.middleware import check_payment_access
+from shared_code.models import Plan
 
-db_client = CosmosDBClient()
-
-async def main(req: func.HttpRequest) -> func.HttpResponse:
+@check_payment_access
+def main(req: func.HttpRequest) -> func.HttpResponse:
+    db_client = CosmosDBClient()
+    
     try:
         req_body = req.get_json()
         email = req_body.get('email')
         location_name = req_body.get('location_name')
         location_address = req_body.get('location_address')
         
-        LOCATION_COST = 45  # Cost in credits
-
         if not all([email, location_name, location_address]):
             return func.HttpResponse(
-                json.dumps({"error": "Missing required fields"}),
+                json.dumps({
+                    "error": "Missing required fields",
+                    "details": {
+                        "email": email,
+                        "location_name": location_name,
+                        "location_address": location_address
+                    }
+                }),
                 mimetype="application/json",
                 status_code=400
             )
 
-        # Get existing payment setup to check user's credits
-        payment_setup = await db_client.get_payment_setup(email)
+        # Get existing payment setup
+        payment_setup = db_client.get_payment_setup(email)
         if not payment_setup:
             return func.HttpResponse(
                 json.dumps({"error": "No payment setup found for this email"}),
@@ -30,49 +40,83 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
                 status_code=404
             )
 
-        # Check if user has enough credits
+        # Check if user has enough credits (45 tokens)
         current_credits = payment_setup.get('tokens', 0)
-        if current_credits < LOCATION_COST:
+        current_num_locations = payment_setup.get('num_locations', 0)
+        
+        if current_credits < Plan.INITIAL_REWARD:
             return func.HttpResponse(
                 json.dumps({
-                    "error": f"Insufficient credits. You need {LOCATION_COST} credits but have {current_credits} credits.",
+                    "error": f"Insufficient credits. You need {Plan.INITIAL_REWARD} credits but have {current_credits} credits.",
                     "error_code": "insufficient_credits"
                 }),
                 mimetype="application/json",
                 status_code=400
             )
 
+        current_time = datetime.now(timezone.utc).isoformat()
+
         # Create location
-        location = await db_client.create_location(
+        location = db_client.create_location(
             user_id=email,
             name=location_name,
             address=location_address
         )
 
         # Create transaction record
-        transaction = await db_client.create_transaction(
+        transaction = db_client.create_transaction(
             user_id=email,
-            amount=LOCATION_COST * 100,  # Store in cents for consistency
+            amount=Plan.LOCATION_SETUP_FEE,  # Already in cents (45_00)
             transaction_type="add_location",
             location_id=location['id'],
-            tokens=-LOCATION_COST,  # Negative because we're spending credits
+            tokens=-Plan.INITIAL_REWARD,  # Deduct 45 tokens
             status='completed'
         )
 
-        # Update user's credit balance
-        new_balance = current_credits - LOCATION_COST
-        await db_client.create_payment_setup(
+        # Update payment setup with new balance and incremented num_locations
+        new_balance = current_credits - Plan.INITIAL_REWARD
+        new_num_locations = current_num_locations + 1
+        
+        updated_setup = db_client.create_payment_setup(
             email=email,
-            status='active',
-            tokens=new_balance
+            status=payment_setup.get('status', 'active'),
+            tokens=new_balance,
+            stripe_customer_id=payment_setup.get('stripe_customer_id'),
+            plan_type=payment_setup.get('plan_type'),
+            custom_threshold=payment_setup.get('custom_threshold'),
+            num_locations=new_num_locations,
+            pending_fee=payment_setup.get('pending_fee', 0)
+        )
+
+        # Log the successful addition
+        logging.info(
+            f"Added location for user {email}:"
+            f"\n  Location ID: {location['id']}"
+            f"\n  Name: {location_name}"
+            f"\n  Credits used: {Plan.INITIAL_REWARD}"
+            f"\n  New credit balance: {new_balance}"
+            f"\n  Total locations: {new_num_locations}"
         )
 
         return func.HttpResponse(
             json.dumps({
                 "status": "success",
                 "message": f"Successfully added location: {location_name}",
-                "location_id": location['id'],
-                "remaining_credits": new_balance
+                "data": {
+                    "location": {
+                        "id": location['id'],
+                        "name": location_name,
+                        "address": location_address,
+                        "is_active": True,
+                        "created_at": location['created_at']
+                    },
+                    "payment": {
+                        "remaining_credits": new_balance,
+                        "num_locations": new_num_locations,
+                        "tokens_used": Plan.INITIAL_REWARD
+                    },
+                    "transaction_id": transaction['id']
+                }
             }),
             mimetype="application/json",
             status_code=200

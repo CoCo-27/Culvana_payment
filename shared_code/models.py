@@ -2,9 +2,11 @@ from datetime import datetime
 from typing import Optional, Dict, List
 from enum import Enum
 
-from datetime import datetime
-from typing import Optional, Dict, List
-from enum import Enum
+PLAN_THRESHOLDS = {
+    'cafe': 100_00,
+    'quick_service': 150_00,
+    'full_service': 225_00
+}
 
 class PlanType(str, Enum):
     CAFE = "cafe"
@@ -13,44 +15,51 @@ class PlanType(str, Enum):
     CUSTOM = "custom"
 
 class Plan:
-    THRESHOLDS = {
-        PlanType.CAFE: 100_00,
-        PlanType.QUICK_SERVICE: 150_00,
-        PlanType.FULL_SERVICE: 225_00,
-    }
     INITIAL_SETUP_FEE = 45_00
     INITIAL_TOKEN_VALUE = 20_00
-    INITIAL_TOKEN_AMOUNT = 100_000
     LOCATION_SETUP_FEE = 45_00
+    INITIAL_REWARD = 20
 
 class BaseModel:
     def to_dict(self) -> Dict:
         return {k: v for k, v in self.__dict__.items() if not k.startswith('_')}
-
+    
     @property
     def timestamp(self) -> str:
         return datetime.utcnow().isoformat()
 
 class PaymentSetup(BaseModel):
-    def __init__(self, email: str, status: str = 'pending', tokens: int = 0):
+    def __init__(
+        self, 
+        email: str, 
+        status: str = 'pending', 
+        tokens: int = 0,
+        stripe_customer_id: str = None,
+        plan_type: str = None,
+        custom_threshold: int = None,
+        num_locations: int = 0,
+        pending_fee: int = 0,
+        monthly_usage: float = 0,
+    ):
         self.id = f"payment_{email}"
-        self.user_id = email  # Add for partition key
+        self.user_id = email
         self.type = "payment_setup"
         self.email = email
         self.status = status
         self.tokens = tokens
-        self.stripe_customer_id = None
-        self.plan_type = None
-        self.custom_threshold = None
-        self.billing_cycle_start = None
-        self.next_billing_date = None
+        self.stripe_customer_id = stripe_customer_id
+        self.plan_type = plan_type
+        self.custom_threshold = custom_threshold
+        self.num_locations = num_locations
+        self.pending_fee = pending_fee
         self.created_at = self.timestamp
         self.updated_at = self.created_at
+        self.monthly_usage = monthly_usage
 
 class Location(BaseModel):
     def __init__(self, user_id: str, name: str, address: str):
         self.id = f"loc_{user_id}_{name}"
-        self.user_id = user_id  # Add for partition key
+        self.user_id = user_id
         self.type = "location"
         self.name = name
         self.address = address
@@ -59,6 +68,10 @@ class Location(BaseModel):
         self.monthly_fee = Plan.LOCATION_SETUP_FEE
         self.created_at = self.timestamp
         self.updated_at = self.created_at
+        self.billing_periods = []
+        self.last_billing_update = self.created_at
+        self.current_period_fee = 0
+        self.accumulated_fee = 0
 
 class Transaction(BaseModel):
     def __init__(

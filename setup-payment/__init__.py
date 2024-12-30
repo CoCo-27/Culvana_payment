@@ -1,96 +1,137 @@
 import azure.functions as func
 import json
 import logging
-import stripe
-import os
 from shared_code.db_client import CosmosDBClient
-
-db_client = CosmosDBClient()
-stripe.api_key = os.getenv('STRIPE_SECRET_KEY')
+from shared_code.models import PaymentSetup, Location, Transaction, Plan
+import stripe
+from shared_code.middleware import check_payment_access
 
 async def main(req: func.HttpRequest) -> func.HttpResponse:
+    db_client = CosmosDBClient()
+    
     try:
-        # Get request data
         req_body = req.get_json()
         email = req_body.get('email')
-        location_name = req_body.get('location_name')
-        location_address = req_body.get('location_address')
+        location_name = req_body.get('locationName')
+        location_address = req_body.get('locationAddress')
         token = req_body.get('token')
         
+        # Validate required fields
         if not all([email, location_name, location_address, token]):
             return func.HttpResponse(
-                json.dumps({"error": "Missing required fields"}),
+                json.dumps({
+                    "error": "Email, location name, location address, and token are required",
+                    "error_code": "missing_fields"
+                }),
                 mimetype="application/json",
                 status_code=400
             )
 
         try:
-            # Create or get Stripe Customer
-            customers = stripe.Customer.list(email=email)
-            if customers.data:
-                customer = customers.data[0]
-            else:
-                customer = stripe.Customer.create(
-                    email=email,
-                    source=token
-                )
-
-            # Create charge
-            charge = stripe.Charge.create(
-                amount=4500,  # $45.00
-                currency='usd',
-                customer=customer.id,
-                description=f'Setup fee including 20 tokens',
-                metadata={
-                    'email': email
-                }
+            # Create Stripe customer
+            customer = stripe.Customer.create(
+                email=email,
+                source=token
             )
 
-            if charge.status == 'succeeded':
-                # Create payment setup with tokens
-                payment_setup = await db_client.create_payment_setup(
-                    email=email,
-                    status='active',
-                    tokens=20
-                )
+            # Create charge for initial location setup
+            charge = stripe.Charge.create(
+                amount=Plan.INITIAL_SETUP_FEE,  # Already in cents
+                currency='usd',
+                customer=customer.id,
+                description=f'Initial location setup for {email}'
+            )
 
-                # Create location
-                location = await db_client.create_location(
-                    user_id=email,
-                    name=location_name,
-                    address=location_address
-                )
+            # Create payment setup using the model
+            payment_setup = PaymentSetup(
+                email=email,
+                status='active',
+                tokens=Plan.INITIAL_REWARD,
+                stripe_customer_id=customer.id,
+                num_locations=1,
+                pending_fee=0,
+                monthly_usage=0
+            )
 
-                # Create completed transaction record
-                transaction = await db_client.create_transaction(
-                    user_id=email,
-                    amount=4500,
-                    transaction_type="setup",
-                    location_id=location['id'],
-                    tokens=20,
-                    status='completed',
-                    stripe_session_id=charge.id
-                )
+            # Create location using the model
+            location = Location(
+                user_id=email,
+                name=location_name,
+                address=location_address
+            )
 
-                return func.HttpResponse(
-                    json.dumps({
-                        'status': 'success',
-                        'charge_id': charge.id,
-                        'tokens_awarded': 20,
-                        'current_balance': 20
-                    }),
-                    mimetype="application/json",
-                    status_code=200
-                )
-            else:
-                raise Exception('Payment failed')
+            # Create transaction record
+            transaction = Transaction(
+                user_id=email,
+                amount=Plan.INITIAL_SETUP_FEE,
+                transaction_type='setup',
+                location_id=location.id,
+                tokens=Plan.INITIAL_TOKEN_VALUE,
+                status='completed',
+                stripe_session_id=charge.id
+            )
 
-        except stripe.error.CardError as e:
-            logging.error(f'Card error: {str(e)}')
+            # Create documents in Cosmos DB
+            payment_result = db_client.payment_container.create_item(
+                body=payment_setup.to_dict()
+            )
+
+            location_result = db_client.location_container.create_item(
+                body=location.to_dict()
+            )
+
+            transaction_result = db_client.transaction_container.create_item(
+                body=transaction.to_dict()
+            )
+
+            # Return cleaned response
             return func.HttpResponse(
                 json.dumps({
-                    "error": e.error.message,
-                    "error_code": "card_error"
+                    "status": "success",
+                    "message": "Payment setup and location creation completed successfully",
+                    "data": {
+                        "payment": {
+                            "id": payment_result['id'],
+                            "email": payment_result['email'],
+                            "status": payment_result['status'],
+                            "tokens": payment_result['tokens'],
+                            "stripe_customer_id": payment_result['stripe_customer_id'],
+                            "num_locations": payment_result['num_locations']
+                        },
+                        "location": {
+                            "id": location_result['id'],
+                            "name": location_result['name'],
+                            "address": location_result['address'],
+                            "is_active": location_result['is_active']
+                        },
+                        "transaction": {
+                            "id": transaction_result['id'],
+                            "amount": transaction_result['amount'],
+                            "tokens_included": transaction_result['tokens_included'],
+                            "status": transaction_result['status']
+                        }
+                    }
+                }),
+                mimetype="application/json",
+                status_code=200
+            )
+
+        except stripe.error.StripeError as e:
+            logging.error(f'Stripe error: {str(e)}')
+            return func.HttpResponse(
+                json.dumps({
+                    "error": "Failed to process payment with Stripe",
+                    "error_code": "stripe_error"
+                }),
+                mimetype="application/json",
+                status_code=400
+            )
+        except Exception as e:
+            logging.error(f'Database error: {str(e)}')
+            return func.HttpResponse(
+                json.dumps({
+                    "error": "Failed to setup payment and location",
+                    "error_code": "database_error"
                 }),
                 mimetype="application/json",
                 status_code=400
