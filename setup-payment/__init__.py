@@ -16,6 +16,7 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
         location_address = req_body.get('locationAddress')
         token = req_body.get('token')
         
+        # Validate required fields
         if not all([email, location_name, location_address, token]):
             return func.HttpResponse(
                 json.dumps({
