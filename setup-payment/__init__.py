@@ -16,7 +16,6 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
         location_address = req_body.get('locationAddress')
         token = req_body.get('token')
         
-        # Validate required fields
         if not all([email, location_name, location_address, token]):
             return func.HttpResponse(
                 json.dumps({
@@ -28,21 +27,18 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
             )
 
         try:
-            # Create Stripe customer
             customer = stripe.Customer.create(
                 email=email,
                 source=token
             )
 
-            # Create charge for initial location setup
             charge = stripe.Charge.create(
-                amount=Plan.INITIAL_SETUP_FEE,  # Already in cents
+                amount=Plan.INITIAL_SETUP_FEE,
                 currency='usd',
                 customer=customer.id,
                 description=f'Initial location setup for {email}'
             )
 
-            # Create payment setup using the model
             payment_setup = PaymentSetup(
                 email=email,
                 status='active',
@@ -53,14 +49,12 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
                 monthly_usage=0
             )
 
-            # Create location using the model
             location = Location(
                 user_id=email,
                 name=location_name,
                 address=location_address
             )
 
-            # Create transaction record
             transaction = Transaction(
                 user_id=email,
                 amount=Plan.INITIAL_SETUP_FEE,
@@ -71,7 +65,6 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
                 stripe_session_id=charge.id
             )
 
-            # Create documents in Cosmos DB
             payment_result = db_client.payment_container.create_item(
                 body=payment_setup.to_dict()
             )
@@ -84,7 +77,6 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
                 body=transaction.to_dict()
             )
 
-            # Return cleaned response
             return func.HttpResponse(
                 json.dumps({
                     "status": "success",
