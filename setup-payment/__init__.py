@@ -14,7 +14,7 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
         email = req_body.get('email')
         location_name = req_body.get('locationName')
         location_address = req_body.get('locationAddress')
-        token = req_body.get('token')
+        token = req_body.get('token')  # This is the card token (e.g., tok_visa)
         
         if not all([email, location_name, location_address, token]):
             return func.HttpResponse(
@@ -27,9 +27,10 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
             )
 
         try:
+            # Create customer with the card token
             customer = stripe.Customer.create(
                 email=email,
-                source=token
+                source=token  # Using token as source
             )
 
             card_id = customer.default_source
@@ -68,6 +69,7 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
                 stripe_session_id=charge.id
             )
 
+            # Create records in database
             payment_result = db_client.payment_container.create_item(
                 body=payment_setup.to_dict()
             )
@@ -80,6 +82,7 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
                 body=transaction.to_dict()
             )
 
+            # Return success response
             return func.HttpResponse(
                 json.dumps({
                     "status": "success",
