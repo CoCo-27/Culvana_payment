@@ -230,7 +230,6 @@ class CosmosDBClient:
             
             if not results:
                 raise ValueError(f"Location {location_id} not found")
-            
             location = results[0]
             location['current_period_fee'] = current_period_fee
             location['last_billing_update'] = last_billing_update
@@ -242,19 +241,6 @@ class CosmosDBClient:
                 body=location
             )
 
-            # Check threshold and publish event if needed
-            payment_setup = self.get_payment_setup(location['user_id'])
-            if payment_setup and payment_setup.get('custom_threshold'):
-                threshold = payment_setup['custom_threshold']
-                if current_period_fee > threshold:
-                    await self.publish_threshold_event(
-                        user_id=location['user_id'],
-                        current_fee=current_period_fee,
-                        threshold=threshold
-                    )
-            
-            return updated_location
-            
         except Exception as e:
             logging.error(f"Error updating location billing: {str(e)}")
             raise
@@ -268,15 +254,6 @@ class CosmosDBClient:
             
             payment_setup['pending_fee'] = pending_fee
             payment_setup['updated_at'] = datetime.utcnow().isoformat()
-            
-            # Check threshold and publish event if needed
-            threshold = payment_setup.get('custom_threshold')
-            if threshold and pending_fee > threshold:
-                await self.publish_threshold_event(
-                    user_id=email,
-                    current_fee=pending_fee,
-                    threshold=threshold
-                )
             
             return self.payment_container.replace_item(
                 item=payment_setup['id'],

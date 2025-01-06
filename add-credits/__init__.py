@@ -7,9 +7,9 @@ from shared_code.db_client import CosmosDBClient
 from shared_code.middleware import check_payment_access
 
 stripe.api_key = os.getenv('STRIPE_SECRET_KEY')
+
 @check_payment_access
 def main(req: func.HttpRequest) -> func.HttpResponse:
-    
     db_client = CosmosDBClient()
 
     try:
@@ -18,6 +18,19 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         
         email = req_body.get('email')
         credit_amount = req_body.get('amount')
+        payment_method_id = req_body.get('payment_method_id')  # Optional
+
+        # Validate required fields
+        if not all([email, credit_amount]):
+            return func.HttpResponse(
+                json.dumps({
+                    "error": "Missing required fields",
+                    "details": "Email and amount are required"
+                }),
+                mimetype="application/json",
+                status_code=400
+            )
+
         try:
             credit_amount = int(credit_amount)
         except (TypeError, ValueError):
@@ -25,16 +38,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 json.dumps({
                     "error": "Invalid amount",
                     "details": "Credit amount must be a valid number"
-                }),
-                mimetype="application/json",
-                
-                status_code=400
-            )
-        if not email or not credit_amount:
-            return func.HttpResponse(
-                json.dumps({
-                    "error": "Missing required fields",
-                    "details": "Both email and amount are required"
                 }),
                 mimetype="application/json",
                 status_code=400
@@ -52,28 +55,26 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 status_code=404
             )
 
-        # Handle Stripe customer
-        stripe_customer_id = payment_setup.get('stripe_customer_id')
-        if not stripe_customer_id:
-            try:
-                customers = stripe.Customer.list(email=email, limit=1)
-                if customers.data:
-                    stripe_customer_id = customers.data[0].id
-                else:
-                    return func.HttpResponse(
-                        json.dumps({
-                            "error": "Payment method not found",
-                            "details": "Please add a payment method to your account"
-                        }),
-                        mimetype="application/json",
-                        status_code=400
-                    )
-            except stripe.error.StripeError as e:
-                logging.error(f"Stripe customer lookup error: {str(e)}")
+        # Handle payment method selection
+        if not payment_method_id:
+            # No payment method provided, use default (first one)
+            if not payment_setup.get('payment_methods') or not payment_setup['payment_methods']:
                 return func.HttpResponse(
                     json.dumps({
-                        "error": "Payment processing error",
-                        "details": "Unable to retrieve payment information"
+                        "error": "No payment method found",
+                        "details": "Please add a payment method first"
+                    }),
+                    mimetype="application/json",
+                    status_code=400
+                )
+            payment_method_id = payment_setup['payment_methods'][0]
+        else:
+            # Verify the provided payment method belongs to the user
+            if payment_method_id not in payment_setup.get('payment_methods', []):
+                return func.HttpResponse(
+                    json.dumps({
+                        "error": "Invalid payment method",
+                        "details": "The selected payment method does not belong to this account"
                     }),
                     mimetype="application/json",
                     status_code=400
@@ -81,20 +82,18 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
 
         try:
             # Process payment
-            amount_in_cents = int(credit_amount) * 100
-            charge = stripe.Charge.create(
+            amount_in_cents = credit_amount * 100
+            payment_intent = stripe.PaymentIntent.create(
                 amount=amount_in_cents,
                 currency='usd',
-                customer=stripe_customer_id,
-                description=f'Purchase of {credit_amount} credits',
-                metadata={
-                    'email': email,
-                    'credit_amount': credit_amount,
-                    'type': 'credit_purchase'
-                }
+                customer=payment_setup['stripe_customer_id'],
+                payment_method=payment_method_id,
+                off_session=True,
+                confirm=True,
+                description=f'Purchase of {credit_amount} credits'
             )
 
-            if charge.status == 'succeeded':
+            if payment_intent.status == 'succeeded':
                 # Record transaction
                 transaction = db_client.create_transaction(
                     user_id=email,
@@ -102,7 +101,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                     transaction_type="credit_purchase",
                     tokens=credit_amount,
                     status='completed',
-                    stripe_session_id=charge.id
+                    stripe_session_id=payment_intent.id
                 )
 
                 # Update credit balance
@@ -121,14 +120,12 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                             "previous_balance": current_balance,
                             "purchased_credits": credit_amount,
                             "new_balance": new_balance,
-                            "transaction_id": charge.id
+                            "transaction_id": payment_intent.id
                         }
                     }),
                     mimetype="application/json",
                     status_code=200
                 )
-            else:
-                raise stripe.error.CardError("Payment failed to process")
 
         except stripe.error.CardError as e:
             error_msg = e.error.message

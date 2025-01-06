@@ -40,6 +40,7 @@ class PaymentSetup(BaseModel):
         num_locations: int = 0,
         pending_fee: int = 0,
         monthly_usage: float = 0,
+        payment_methods: List[str] = None,
     ):
         self.id = f"payment_{email}"
         self.user_id = email
@@ -55,6 +56,7 @@ class PaymentSetup(BaseModel):
         self.created_at = self.timestamp
         self.updated_at = self.created_at
         self.monthly_usage = monthly_usage
+        self.payment_methods = payment_methods or []
 
 class Location(BaseModel):
     def __init__(self, user_id: str, name: str, address: str):
@@ -65,7 +67,7 @@ class Location(BaseModel):
         self.address = address
         self.is_active = True
         self.current_usage = 0
-        self.monthly_fee = Plan.LOCATION_SETUP_FEE
+        self.monthly_fee = Plan.LOCATION_SETUP_FEE / 100
         self.created_at = self.timestamp
         self.updated_at = self.created_at
         self.billing_periods = []
