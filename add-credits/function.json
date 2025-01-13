@@ -1,0 +1,21 @@
+{
+  "bindings": [
+    {
+      "authLevel": "anonymous",
+      "type": "httpTrigger",
+      "direction": "in",
+      "name": "req",
+      "methods": ["GET", "POST", "OPTIONS"]
+    },
+    {
+      "type": "http",
+      "direction": "out",
+      "name": "$return"
+    }
+  ],
+  "cors": {
+    "allowedOrigins": ["http://localhost:3000"],
+    "allowedMethods": ["GET", "POST", "OPTIONS"],
+    "allowedHeaders": ["*"]
+  }
+}
