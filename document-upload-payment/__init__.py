@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 
 def calculate_document_fee(pages: int) -> float:
     """Calculate fee for document processing"""
-    return 0.2 * float(pages)  # $0.2 per page
+    return 20 * float(pages)
 
 @check_payment_access
 def main(req: func.HttpRequest) -> func.HttpResponse:

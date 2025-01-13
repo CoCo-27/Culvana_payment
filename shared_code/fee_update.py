@@ -24,7 +24,7 @@ async def update_location_fees(db_client: CosmosDBClient, location):
         current_time = datetime.now(timezone.utc)
         
         # Calculate new current_period_fee
-        current_period_fee = location.get('current_period_fee', 0) + hourly_fee / 100
+        current_period_fee = location.get('current_period_fee', 0) + hourly_fee
         
         # Update location with new fee
         await db_client.update_location_billing(

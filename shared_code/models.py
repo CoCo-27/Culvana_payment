@@ -18,7 +18,7 @@ class Plan:
     INITIAL_SETUP_FEE = 45_00
     INITIAL_TOKEN_VALUE = 20_00
     LOCATION_SETUP_FEE = 45_00
-    INITIAL_REWARD = 20
+    INITIAL_REWARD = 20_00
 
 class BaseModel:
     def to_dict(self) -> Dict:
@@ -67,7 +67,7 @@ class Location(BaseModel):
         self.address = address
         self.is_active = True
         self.current_usage = 0
-        self.monthly_fee = Plan.LOCATION_SETUP_FEE / 100
+        self.monthly_fee = Plan.LOCATION_SETUP_FEE
         self.created_at = self.timestamp
         self.updated_at = self.created_at
         self.billing_periods = []

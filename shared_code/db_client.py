@@ -92,7 +92,9 @@ class CosmosDBClient:
         plan_type: str = None,
         custom_threshold: int = None,
         num_locations: int = 0,
-        pending_fee: int = 0
+        pending_fee: int = 0,
+        payment_methods = None,
+        monthly_usage: int = 0
     ) -> Dict:
         """Create new payment setup"""
         try:
@@ -104,7 +106,9 @@ class CosmosDBClient:
                 plan_type=plan_type,
                 custom_threshold=custom_threshold,
                 num_locations=num_locations,
-                pending_fee=pending_fee
+                pending_fee=pending_fee,
+                payment_methods=payment_methods,
+                monthly_usage=monthly_usage
             )
             item_dict = payment_setup.to_dict()
             item_dict['updated_at'] = datetime.utcnow().isoformat()

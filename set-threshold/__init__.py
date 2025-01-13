@@ -64,6 +64,8 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         current_status = payment_setup.get('status', 'active')
         current_tokens = payment_setup.get('tokens', 0)
         current_stripe_customer_id = payment_setup.get('stripe_customer_id')
+        current_payment_methods = payment_setup.get('payment_methods')
+        current_monthly_usage = payment_setup.get('monthly_usage')
 
         # Log values being used for update
         logging.info(f"Updating with num_locations: {current_num_locations}")
@@ -76,7 +78,9 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             plan_type=plan_type,
             custom_threshold=int(custom_threshold) if plan_type == PlanType.CUSTOM.value else None,
             num_locations=current_num_locations,  # Use the preserved value
-            pending_fee=current_pending_fee
+            pending_fee=current_pending_fee,
+            payment_methods = current_payment_methods, 
+            monthly_usage = current_monthly_usage,
         )
 
         # Log updated setup for verification

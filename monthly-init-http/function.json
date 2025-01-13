@@ -6,8 +6,7 @@
       "type": "httpTrigger",
       "direction": "in",
       "name": "req",
-      "methods": ["post"],
-      "route": "pay-pending"
+      "methods": ["post"]
     },
     {
       "type": "http",

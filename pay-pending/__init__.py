@@ -1,12 +1,9 @@
 import azure.functions as func
 import json
 import logging
-import stripe
-import os
 from shared_code.db_client import CosmosDBClient
 from shared_code.middleware import check_payment_access
-
-stripe.api_key = os.getenv('STRIPE_SECRET_KEY')
+from datetime import datetime 
 
 @check_payment_access
 def main(req: func.HttpRequest) -> func.HttpResponse:
@@ -15,13 +12,12 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     try:
         req_body = req.get_json()
         email = req_body.get('email')
-        payment_method_id = req_body.get('payment_method_id')
 
-        if not all([email, payment_method_id]):
+        if not email:
             return func.HttpResponse(
                 json.dumps({
                     "error": "Missing required fields",
-                    "details": "Email and payment method are required"
+                    "details": "Email is required"
                 }),
                 mimetype="application/json",
                 status_code=400
@@ -40,6 +36,8 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             )
 
         pending_fee = payment_setup.get('pending_fee', 0)
+        current_tokens = payment_setup.get('tokens', 0)
+
         if pending_fee == 0:
             return func.HttpResponse(
                 json.dumps({
@@ -50,56 +48,60 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 status_code=200
             )
 
-        try:
-            # Process payment
-            payment_intent = stripe.PaymentIntent.create(
-                amount=pending_fee,
-                currency='usd',
-                customer=payment_setup['stripe_customer_id'],
-                payment_method=payment_method_id,
-                off_session=True,
-                confirm=True,
-                description=f'Pending fee payment for {email}'
-            )
-
-            if payment_intent.status == 'succeeded':
-                # Record transaction
-                transaction = db_client.create_transaction(
-                    user_id=email,
-                    amount=pending_fee,
-                    transaction_type="fee_payment",
-                    status='completed',
-                    stripe_session_id=payment_intent.id
-                )
-
-                # Update payment setup
-                payment_setup['pending_fee'] = 0
-                payment_setup['is_blocked'] = False
-                payment_setup['updated_at'] = datetime.utcnow().isoformat()
-                
-                db_client.payment_container.replace_item(
-                    item=payment_setup['id'],
-                    body=payment_setup
-                )
-
-                return func.HttpResponse(
-                    json.dumps({
-                        "status": "success",
-                        "message": "Successfully paid pending fee",
-                        "transaction_id": payment_intent.id
-                    }),
-                    mimetype="application/json",
-                    status_code=200
-                )
-
-        except stripe.error.CardError as e:
-            error_msg = e.error.message
-            logging.error(f"Card error: {error_msg}")
+        # Check if user has enough tokens
+        if current_tokens < pending_fee:
             return func.HttpResponse(
                 json.dumps({
-                    "error": "Payment failed",
-                    "details": error_msg,
-                    "error_code": e.error.code
+                    "error": "Insufficient tokens",
+                    "details": f"You need {pending_fee/100} tokens but have {current_tokens/100} tokens"
+                }),
+                mimetype="application/json",
+                status_code=400
+            )
+
+        try:
+            # Record transaction
+            transaction = db_client.create_transaction(
+                user_id=email,
+                amount=pending_fee,
+                transaction_type="fee_payment",
+                status='completed',
+                tokens=-pending_fee  # Deduct the pending fee amount from tokens
+            )
+
+            # Update payment setup
+            new_token_balance = current_tokens - pending_fee
+            payment_setup['tokens'] = new_token_balance
+            payment_setup['pending_fee'] = 0
+            payment_setup['is_blocked'] = False
+            payment_setup['updated_at'] = datetime.utcnow().isoformat()
+            
+            db_client.payment_container.replace_item(
+                item=payment_setup['id'],
+                body=payment_setup
+            )
+
+            return func.HttpResponse(
+                json.dumps({
+                    "status": "success",
+                    "message": "Successfully paid pending fee",
+                    "data": {
+                        "previous_balance": current_tokens,
+                        "paid_amount": pending_fee,
+                        "new_balance": new_token_balance,
+                        "transaction_id": transaction['id']
+                    }
+                }),
+                mimetype="application/json",
+                status_code=200
+            )
+
+        except Exception as e:
+            logging.error(f"Error processing fee payment: {str(e)}")
+            return func.HttpResponse(
+                json.dumps({
+                    "error": "Payment processing failed",
+                    "details": str(e)
                 }),
                 mimetype="application/json",
                 status_code=400

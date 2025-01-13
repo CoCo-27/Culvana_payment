@@ -5,6 +5,7 @@ import stripe
 import os
 from shared_code.db_client import CosmosDBClient
 from shared_code.middleware import check_payment_access
+from datetime import datetime 
 
 stripe.api_key = os.getenv('STRIPE_SECRET_KEY')
 
@@ -15,7 +16,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     try:
         req_body = req.get_json()
         email = req_body.get('email')
-        card_id = req_body.get('card_id')
+        card_id = req_body.get('cardId')
 
         if not all([email, card_id]):
             return func.HttpResponse(

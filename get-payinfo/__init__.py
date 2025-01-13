@@ -3,6 +3,24 @@ import json
 import logging
 from shared_code.db_client import CosmosDBClient
 from shared_code.middleware import check_payment_access
+import os
+import stripe
+
+stripe.api_key = os.getenv('STRIPE_SECRET_KEY')
+
+def get_card_details(payment_method_id):
+    try:
+        payment_method = stripe.PaymentMethod.retrieve(payment_method_id)
+        return {
+            'id': payment_method_id,
+            'brand': payment_method.card.brand,
+            'last4': payment_method.card.last4,
+            'exp_month': payment_method.card.exp_month,
+            'exp_year': payment_method.card.exp_year
+        }
+    except stripe.error.StripeError as e:
+        logging.error(f"Error retrieving card details: {str(e)}")
+        return None
 
 @check_payment_access
 def main(req: func.HttpRequest) -> func.HttpResponse:
@@ -22,7 +40,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 status_code=400
             )
 
-        # Get payment setup from database
         payment_setup = db_client.get_payment_setup(email)
         
         if not payment_setup:
@@ -35,7 +52,15 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 status_code=404
             )
 
-        # Return payment information with safe get operations
+        # Convert payment methods to include card details
+        payment_methods = payment_setup.get('payment_methods', [])
+        detailed_payment_methods = []
+        
+        for payment_method_id in payment_methods:
+            card_details = get_card_details(payment_method_id)
+            if card_details:
+                detailed_payment_methods.append(card_details)
+
         return func.HttpResponse(
             json.dumps({
                 "status": "success",
@@ -50,7 +75,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                     "num_locations": payment_setup.get('num_locations', 0),
                     "pending_fee": payment_setup.get('pending_fee', 0),
                     "monthly_usage": payment_setup.get('monthly_usage', 0),
-                    "payment_methods": payment_setup.get('payment_methods', []),
+                    "payment_methods": detailed_payment_methods,  # Now includes detailed card info
                     "created_at": payment_setup.get('created_at'),
                     "updated_at": payment_setup.get('updated_at')
                 }

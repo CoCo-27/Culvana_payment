@@ -17,10 +17,9 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         logging.info(f"Request body: {req_body}")
         
         email = req_body.get('email')
-        credit_amount = req_body.get('amount')
-        payment_method_id = req_body.get('payment_method_id')  # Optional
+        credit_amount = req_body.get('amount')  # Frontend sends dollar amount (e.g., 50 for $50.00)
+        payment_method_id = req_body.get('payment_method_id')
 
-        # Validate required fields
         if not all([email, credit_amount]):
             return func.HttpResponse(
                 json.dumps({
@@ -43,7 +42,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 status_code=400
             )
 
-        # Get payment setup
         payment_setup = db_client.get_payment_setup(email)
         if not payment_setup:
             return func.HttpResponse(
@@ -55,9 +53,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 status_code=404
             )
 
-        # Handle payment method selection
         if not payment_method_id:
-            # No payment method provided, use default (first one)
             if not payment_setup.get('payment_methods') or not payment_setup['payment_methods']:
                 return func.HttpResponse(
                     json.dumps({
@@ -69,7 +65,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 )
             payment_method_id = payment_setup['payment_methods'][0]
         else:
-            # Verify the provided payment method belongs to the user
             if payment_method_id not in payment_setup.get('payment_methods', []):
                 return func.HttpResponse(
                     json.dumps({
@@ -81,45 +76,49 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 )
 
         try:
-            # Process payment
-            amount_in_cents = credit_amount * 100
+            # Convert dollar amount to cents for both Stripe and token storage
+            amount_in_cents = credit_amount * 100  # 50 becomes 5000 cents
+            
+            # Create Stripe payment
             payment_intent = stripe.PaymentIntent.create(
-                amount=amount_in_cents,
+                amount=amount_in_cents,  # Using cents (5000)
                 currency='usd',
                 customer=payment_setup['stripe_customer_id'],
                 payment_method=payment_method_id,
                 off_session=True,
                 confirm=True,
-                description=f'Purchase of {credit_amount} credits'
+                description=f'Purchase of ${credit_amount}.00 credits'  # Shows $50.00
             )
 
             if payment_intent.status == 'succeeded':
-                # Record transaction
+                # Create transaction record with cents amount
                 transaction = db_client.create_transaction(
                     user_id=email,
-                    amount=amount_in_cents,
+                    amount=amount_in_cents,  # Storing 5000 cents
                     transaction_type="credit_purchase",
-                    tokens=credit_amount,
+                    tokens=amount_in_cents,  # Storing 5000 cents
                     status='completed',
                     stripe_session_id=payment_intent.id
                 )
 
-                # Update credit balance
-                current_balance = payment_setup.get('tokens', 0)
-                new_balance = current_balance + credit_amount
+                # Update token balance with cents
+                current_balance = payment_setup.get('tokens', 0)  # Already in cents
+                new_balance = current_balance + amount_in_cents  # Adding cents (5000)
+                
+                # Update the tokens in database
                 db_client.update_tokens(
                     email=email,
-                    tokens=new_balance
+                    tokens=new_balance  # Storing in cents
                 )
 
                 return func.HttpResponse(
                     json.dumps({
                         "status": "success",
-                        "message": f"Successfully purchased {credit_amount} credits",
+                        "message": f"Successfully purchased ${credit_amount}.00 credits",
                         "details": {
-                            "previous_balance": current_balance,
-                            "purchased_credits": credit_amount,
-                            "new_balance": new_balance,
+                            "previous_balance": current_balance,  # In cents
+                            "purchased_credits": amount_in_cents,  # In cents
+                            "new_balance": new_balance,  # In cents
                             "transaction_id": payment_intent.id
                         }
                     }),
