@@ -52,11 +52,8 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             )
 
         try:
-            # Remove card from Stripe
-            stripe.Customer.delete_source(
-                payment_setup['stripe_customer_id'],
-                card_id
-            )
+            # Detach payment method instead of deleting source
+            stripe.PaymentMethod.detach(card_id)
 
             # Update payment setup
             payment_methods.remove(card_id)
