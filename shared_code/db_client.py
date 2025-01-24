@@ -179,6 +179,21 @@ class CosmosDBClient:
             logging.error(f"Error getting payment setup: {str(e)}")
             raise
 
+    def get_payment_log(self, email: str) -> Optional[Dict]:
+        """Get payment setup by email"""
+        try:
+            query = "SELECT * FROM c WHERE c.type = 'transaction' AND c.user_id = @user_id"
+            parameters = [{"name": "@user_id", "value": email}]
+            results = list(self.transaction_container.query_items(
+                query=query,
+                parameters=parameters,
+                enable_cross_partition_query=True
+            ))
+            return results if results else None
+        except Exception as e:
+            logging.error(f"Error getting payment setup: {str(e)}")
+            raise
+
     def get_locations(self, email: str) -> List[Dict]:
         """Get all locations for a user"""
         try:

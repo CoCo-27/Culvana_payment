@@ -81,13 +81,17 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             
             # Create Stripe payment
             payment_intent = stripe.PaymentIntent.create(
-                amount=amount_in_cents,  # Using cents (5000)
+                amount=amount_in_cents,
                 currency='usd',
                 customer=payment_setup['stripe_customer_id'],
                 payment_method=payment_method_id,
                 off_session=True,
                 confirm=True,
-                description=f'Purchase of ${credit_amount}.00 credits'  # Shows $50.00
+                description=f'Purchase of ${credit_amount}.00 credits',
+                metadata={
+                    'credit_amount': credit_amount,
+                    'user_email': email
+                }
             )
 
             if payment_intent.status == 'succeeded':

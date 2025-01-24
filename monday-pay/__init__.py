@@ -52,6 +52,7 @@ async def process_user_fee(db_client: CosmosDBClient, payment_setup):
             logging.info(f"Successfully processed payment for user: {payment_setup['user_id']}, remaining tokens: {new_tokens}")
             return result
         else:
+            # Block user and deactivate all locations
             payment_setup['is_blocked'] = True
             payment_setup['updated_at'] = datetime.utcnow().isoformat()
             
@@ -59,13 +60,31 @@ async def process_user_fee(db_client: CosmosDBClient, payment_setup):
                 item=payment_setup['id'],
                 body=payment_setup
             )
+
+            # Get and deactivate all active locations
+            locations = db_client.get_locations(payment_setup['user_id'])
+            deactivated_locations = []
+            
+            for location in locations:
+                if location.get('is_active', False):
+                    location['is_active'] = False
+                    location['deactivated_at'] = datetime.utcnow().isoformat()
+                    location['deactivation_reason'] = 'insufficient_tokens'
+                    location['updated_at'] = datetime.utcnow().isoformat()
+                    
+                    db_client.location_container.replace_item(
+                        item=location['id'],
+                        body=location
+                    )
+                    deactivated_locations.append(location['id'])
             
             result.update({
                 "success": False,
                 "is_blocked": True,
-                "message": f"Insufficient tokens for payment. Required: {pending_fee}, Available: {tokens}"
+                "deactivated_locations": deactivated_locations,
+                "message": f"Insufficient tokens for payment. Required: {pending_fee}, Available: {tokens}. Account blocked and locations deactivated."
             })
-            logging.warning(f"Insufficient tokens for user: {payment_setup['user_id']}, required: {pending_fee}, available: {tokens}")
+            logging.warning(f"Insufficient tokens for user: {payment_setup['user_id']}, required: {pending_fee}, available: {tokens}. Deactivated {len(deactivated_locations)} locations.")
             return result
             
     except Exception as e:

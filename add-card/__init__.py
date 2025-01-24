@@ -13,12 +13,12 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     try:
         req_body = req.get_json()
         email = req_body.get('email')
-        token = req_body.get('token')
+        payment_method_id = req_body.get('payment_method_id')
         
-        if not all([email, token]):
+        if not all([email, payment_method_id]):
             return func.HttpResponse(
                 json.dumps({
-                    "error": "Email and token are required",
+                    "error": "Email and payment method are required",
                     "error_code": "missing_fields"
                 }),
                 mimetype="application/json",
@@ -39,16 +39,15 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                     status_code=404
                 )
 
-            # Add card to existing Stripe customer
-            customer = stripe.Customer.retrieve(payment_setup['stripe_customer_id'])
-            card = stripe.Customer.create_source(
-                customer.id,
-                source=token
+            # Attach payment method to customer using modern API
+            payment_method = stripe.PaymentMethod.attach(
+                payment_method_id,
+                customer=payment_setup['stripe_customer_id']
             )
 
             # Update payment_methods array
             current_payment_methods = payment_setup.get('payment_methods', [])
-            current_payment_methods.append(card.id)
+            current_payment_methods.append(payment_method.id)
             
             # Update payment setup
             payment_setup['payment_methods'] = current_payment_methods
@@ -60,11 +59,21 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 body=payment_setup
             )
 
+            # Get card details for response
+            card_details = {
+                'id': payment_method.id,
+                'brand': payment_method.card.brand,
+                'last4': payment_method.card.last4,
+                'exp_month': payment_method.card.exp_month,
+                'exp_year': payment_method.card.exp_year
+            }
+
             return func.HttpResponse(
                 json.dumps({
                     "status": "success",
                     "message": "Card added successfully",
                     "data": {
+                        "payment_method": card_details,
                         "payment_methods": result['payment_methods']
                     }
                 }),

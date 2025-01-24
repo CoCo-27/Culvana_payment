@@ -14,12 +14,12 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
         email = req_body.get('email')
         location_name = req_body.get('locationName')
         location_address = req_body.get('locationAddress')
-        token = req_body.get('token')
+        payment_method_id = req_body.get('payment_method_id')
         
-        if not all([email, location_name, location_address, token]):
+        if not all([email, location_name, location_address, payment_method_id]):
             return func.HttpResponse(
                 json.dumps({
-                    "error": "Email, location name, location address, and token are required",
+                    "error": "Email, location name, location address, and payment method are required",
                     "error_code": "missing_fields"
                 }),
                 mimetype="application/json",
@@ -28,16 +28,28 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
 
         try:
             customer = stripe.Customer.create(
-                email=email,
-                source=token
+                email=email
             )
 
-            card_id = customer.default_source
+            payment_method = stripe.PaymentMethod.attach(
+                payment_method_id,
+                customer=customer.id
+            )
 
-            charge = stripe.Charge.create(
+            stripe.Customer.modify(
+                customer.id,
+                invoice_settings={
+                    'default_payment_method': payment_method.id
+                }
+            )
+
+            payment_intent = stripe.PaymentIntent.create(
                 amount=Plan.INITIAL_SETUP_FEE,
                 currency='usd',
                 customer=customer.id,
+                payment_method=payment_method.id,
+                off_session=True,
+                confirm=True,
                 description=f'Initial location setup for {email}'
             )
 
@@ -49,7 +61,7 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
                 num_locations=1,
                 pending_fee=0,
                 monthly_usage=0,
-                payment_methods=[card_id]
+                payment_methods=[payment_method.id]
             )
 
             location = Location(
@@ -65,7 +77,7 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
                 location_id=location.id,
                 tokens=Plan.INITIAL_TOKEN_VALUE,
                 status='completed',
-                stripe_session_id=charge.id
+                stripe_session_id=payment_intent.id
             )
 
             payment_result = db_client.payment_container.create_item(
