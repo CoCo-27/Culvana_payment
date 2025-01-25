@@ -28,7 +28,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 status_code=400
             )
 
-        # Get payment setup
         payment_setup = db_client.get_payment_setup(email)
         if not payment_setup:
             return func.HttpResponse(
@@ -52,10 +51,8 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             )
 
         try:
-            # Detach payment method instead of deleting source
             stripe.PaymentMethod.detach(card_id)
 
-            # Update payment setup
             payment_methods.remove(card_id)
             payment_setup['payment_methods'] = payment_methods
             payment_setup['updated_at'] = datetime.utcnow().isoformat()

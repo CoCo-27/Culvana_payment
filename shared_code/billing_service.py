@@ -26,7 +26,7 @@ class BillingService:
             return delta.total_seconds() / 3600
         except Exception as e:
             logging.error(f"Error calculating hours: {str(e)}")
-            return 1.0  # Default to 1 hour if calculation fails
+            return 1.0
     
     async def process_location_billing(self, location: dict, current_time: str) -> float:
         try:
@@ -36,7 +36,6 @@ class BillingService:
             hourly_rate = self.calculate_hourly_rate(location.get('monthly_fee', DEFAULT_MONTHLY_FEE))
             period_fee = hourly_rate * hours_used
             
-            # Update location billing info
             location['current_period_fee'] = location.get('current_period_fee', 0) + period_fee
             location['last_billing_update'] = current_time
             location['updated_at'] = datetime.utcnow().isoformat()
@@ -61,12 +60,10 @@ class BillingService:
             total_fee = current_fee + new_fee
             threshold = payment_setup.get('custom_threshold', DEFAULT_THRESHOLD)
             
-            # Update payment setup
             payment_setup['pending_fee'] = total_fee
             payment_setup['updated_at'] = datetime.utcnow().isoformat()
             self.db_client.update_payment_setup(payment_setup)
             
-            # Check threshold and publish event if exceeded
             if total_fee > threshold:
                 event_published = await self.event_publisher.publish_threshold_event(
                     user_id=user_id,

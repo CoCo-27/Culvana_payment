@@ -254,7 +254,6 @@ class CosmosDBClient:
             location['last_billing_update'] = last_billing_update
             location['updated_at'] = datetime.utcnow().isoformat()
             
-            # Update the location
             updated_location = self.location_container.replace_item(
                 item=location['id'],
                 body=location

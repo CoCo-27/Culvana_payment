@@ -21,7 +21,6 @@ def check_payment_access(func_to_wrap):
                 )
             db_client = CosmosDBClient()
             
-            # Check for pending transactions
             query = """
             SELECT * FROM c 
             WHERE c.type = 'transaction' 

@@ -86,19 +86,16 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
     try:
         db_client = CosmosDBClient()
         
-        # Get query parameters
         user_id = req.params.get('user_id')
         test_all = req.params.get('test_all', 'false').lower() == 'true'
         
         if test_all:
-            # Process all pending payments
             query = """
             SELECT * FROM c 
             WHERE c.type = 'payment_setup' 
             AND c.pending_fee > 0
             """
         elif user_id:
-            # Process specific user
             query = f"""
             SELECT * FROM c 
             WHERE c.type = 'payment_setup' 
@@ -134,7 +131,6 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
             for payment_setup in payment_setups
         ])
         
-        # Prepare summary
         summary = {
             "total_processed": len(results),
             "successful": sum(1 for r in results if r['success']),

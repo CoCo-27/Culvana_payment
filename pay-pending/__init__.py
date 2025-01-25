@@ -23,7 +23,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 status_code=400
             )
 
-        # Get payment setup
         payment_setup = db_client.get_payment_setup(email)
         if not payment_setup:
             return func.HttpResponse(
@@ -48,7 +47,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 status_code=200
             )
 
-        # Check if user has enough tokens
         if current_tokens < pending_fee:
             return func.HttpResponse(
                 json.dumps({
@@ -60,16 +58,14 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             )
 
         try:
-            # Record transaction
             transaction = db_client.create_transaction(
                 user_id=email,
                 amount=pending_fee,
                 transaction_type="fee_payment",
                 status='completed',
-                tokens=-pending_fee  # Deduct the pending fee amount from tokens
+                tokens=-pending_fee
             )
 
-            # Update payment setup
             new_token_balance = current_tokens - pending_fee
             payment_setup['tokens'] = new_token_balance
             payment_setup['pending_fee'] = 0

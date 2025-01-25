@@ -31,7 +31,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 status_code=400
             )
 
-        # Get existing payment setup
         payment_setup = db_client.get_payment_setup(email)
         if not payment_setup:
             return func.HttpResponse(
@@ -40,7 +39,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 status_code=404
             )
 
-        # Check if user has enough credits (45 tokens)
         current_credits = payment_setup.get('tokens', 0)
         current_num_locations = payment_setup.get('num_locations', 0)
         
@@ -56,24 +54,21 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
 
         current_time = datetime.now(timezone.utc).isoformat()
 
-        # Create location
         location = db_client.create_location(
             user_id=email,
             name=location_name,
             address=location_address
         )
 
-        # Create transaction record
         transaction = db_client.create_transaction(
             user_id=email,
-            amount=Plan.LOCATION_SETUP_FEE,  # Already in cents (45_00)
+            amount=Plan.LOCATION_SETUP_FEE,
             transaction_type="add_location",
             location_id=location['id'],
-            tokens=-Plan.INITIAL_REWARD,  # Deduct 45 tokens
+            tokens=-Plan.INITIAL_REWARD,
             status='completed'
         )
 
-        # Update payment setup with new balance and incremented num_locations
         new_balance = current_credits - Plan.INITIAL_REWARD
         new_num_locations = current_num_locations + 1
         
@@ -88,7 +83,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             pending_fee=payment_setup.get('pending_fee', 0)
         )
 
-        # Log the successful addition
         logging.info(
             f"Added location for user {email}:"
             f"\n  Location ID: {location['id']}"

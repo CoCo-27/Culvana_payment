@@ -11,49 +11,41 @@ async def process_user_billing(db_client: CosmosDBClient, payment_setup):
         user_id = payment_setup['user_id']
         logging.info(f"Processing monthly initialization for user: {user_id}")
         
-        # Get all locations for the user
         locations = db_client.get_locations(user_id)
         
-        # Calculate totals
         total_usage = sum(location.get('current_period_fee', 0) for location in locations)
         previous_monthly_usage = payment_setup.get('monthly_usage', 0)
         current_pending_fee = payment_setup.get('pending_fee', 0)
         
-        # Add current period fees to pending_fee
         new_pending_fee = current_pending_fee + total_usage
         
-        # Update payment setup with historical data and new pending fee
         payment_setup.update({
             'previous_monthly_usage': previous_monthly_usage,
             'last_month_total': total_usage,
-            'monthly_usage': 0,  # Reset for new month
-            'pending_fee': new_pending_fee,  # Accumulate pending fees
+            'monthly_usage': 0,  
+            'pending_fee': new_pending_fee,
             'last_billing_cycle': datetime.now(timezone.utc).isoformat(),
             'updated_at': datetime.utcnow().isoformat()
         })
         
-        # Update payment setup in database
         db_client.payment_container.replace_item(
             item=payment_setup['id'],
             body=payment_setup
         )
         
-        # Reset location fees and store historical data
         processed_locations = 0
         for location in locations:
             if location.get('is_active', False):
                 current_fee = location.get('current_period_fee', 0)
                 
-                # Update location with historical data and reset current values
                 location.update({
                     'previous_period_fee': current_fee,
-                    'current_period_fee': 0,  # Reset for new month
+                    'current_period_fee': 0,
                     'last_billing_cycle': datetime.now(timezone.utc).isoformat(),
                     'last_billing_update': datetime.now(timezone.utc).isoformat(),
                     'updated_at': datetime.utcnow().isoformat()
                 })
                 
-                # Update location in database
                 db_client.location_container.replace_item(
                     item=location['id'],
                     body=location
@@ -96,7 +88,6 @@ async def main(mytimer: func.TimerRequest) -> None:
     try:
         db_client = CosmosDBClient()
         
-        # Get all payment setups
         query = "SELECT * FROM c WHERE c.type = 'payment_setup'"
         payment_setups = list(db_client.payment_container.query_items(
             query=query,
@@ -109,18 +100,15 @@ async def main(mytimer: func.TimerRequest) -> None:
             logging.info('No payment setups to process')
             return
         
-        # Process all users concurrently
         results = await asyncio.gather(*[
             process_user_billing(db_client, payment_setup)
             for payment_setup in payment_setups
         ])
         
-        # Calculate statistics
         successful = sum(1 for r in results if r['success'])
         failed = sum(1 for r in results if not r['success'])
         total_processed = len(results)
         
-        # Log detailed summary
         logging.info(f'''
         Monthly initialization completed:
         - Total users processed: {total_processed}
@@ -129,7 +117,6 @@ async def main(mytimer: func.TimerRequest) -> None:
         - Completion time: {datetime.utcnow().isoformat()}
         ''')
         
-        # Log any failures in detail
         for result in results:
             if not result['success']:
                 logging.error(f"Failed to process user {result['user_id']}: {result.get('error')}")

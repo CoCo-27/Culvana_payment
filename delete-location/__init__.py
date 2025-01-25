@@ -25,7 +25,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             )
 
         try:
-            # Get payment setup first to update num_locations
             payment_setup = db_client.get_payment_setup(email)
             if not payment_setup:
                 return func.HttpResponse(
@@ -37,7 +36,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                     status_code=404
                 )
 
-            # Query for existing location
             query = "SELECT * FROM c WHERE c.id = @location_id AND c.type = 'location' AND c.user_id = @user_id"
             parameters = [
                 {"name": "@location_id", "value": location_id},
@@ -63,7 +61,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             existing_location = items[0]
             current_time = datetime.now(timezone.utc).isoformat()
 
-            # If location was active, decrease num_locations in payment setup
             if existing_location['is_active']:
                 current_num_locations = payment_setup.get('num_locations', 0)
                 new_num_locations = max(0, current_num_locations - 1)
@@ -71,14 +68,12 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 payment_setup['num_locations'] = new_num_locations
                 payment_setup['updated_at'] = current_time
                 
-                # Update payment setup
                 db_client.payment_container.replace_item(
                     item=payment_setup['id'],
                     body=payment_setup
                 )
             
             try:
-                # Delete the location using user_id as partition key
                 db_client.location_container.delete_item(
                     item=existing_location['id'],
                     partition_key=existing_location['user_id']
@@ -100,7 +95,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 )
             except Exception as delete_error:
                 logging.error(f"Delete operation error with user_id partition key: {str(delete_error)}")
-                # Try alternative partition key
                 try:
                     db_client.location_container.delete_item(
                         item=existing_location['id'],

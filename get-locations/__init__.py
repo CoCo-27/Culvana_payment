@@ -21,10 +21,8 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             )
 
         try:
-            # Get all locations for the user
             locations = db_client.get_locations(email)
             
-            # Get payment setup
             payment_setup = db_client.get_payment_setup(email)
             
             if not payment_setup:

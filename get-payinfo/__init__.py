@@ -52,7 +52,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 status_code=404
             )
 
-        # Convert payment methods to include card details
         payment_methods = payment_setup.get('payment_methods', [])
         detailed_payment_methods = []
         
@@ -75,7 +74,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                     "num_locations": payment_setup.get('num_locations', 0),
                     "pending_fee": payment_setup.get('pending_fee', 0),
                     "monthly_usage": payment_setup.get('monthly_usage', 0),
-                    "payment_methods": detailed_payment_methods,  # Now includes detailed card info
+                    "payment_methods": detailed_payment_methods,
                     "created_at": payment_setup.get('created_at'),
                     "updated_at": payment_setup.get('updated_at')
                 }

@@ -13,14 +13,11 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
     try:
         logging.info('Starting fee update process via HTTP trigger')
         
-        # Initialize database client
         db_client = CosmosDBClient()
         
-        # Get user_id from query parameter if provided
         user_id = req.params.get('user_id')
         
         if user_id:
-            # Update specific user
             payment_setup = db_client.get_payment_setup(user_id)
             if not payment_setup:
                 return func.HttpResponse(
@@ -35,7 +32,6 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
             )
         
         else:
-            # Update all users
             query = "SELECT * FROM c WHERE c.type = 'payment_setup'"
             payment_setups = list(db_client.payment_container.query_items(
                 query=query,

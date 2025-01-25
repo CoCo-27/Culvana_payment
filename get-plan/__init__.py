@@ -12,7 +12,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     db_client = CosmosDBClient()
     
     try:
-        # Get request body
         try:
             req_body = req.get_json()
             logging.info(f"Request body: {req_body}")
@@ -42,7 +41,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             )
 
         try:
-            # Get payment setup
             payment_setup = db_client.get_payment_setup(email)
             logging.info(f"Payment setup retrieved: {payment_setup}")
 
@@ -57,7 +55,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                     status_code=404
                 )
 
-            # Return the data
             return func.HttpResponse(
                 json.dumps({
                     "status": "success",

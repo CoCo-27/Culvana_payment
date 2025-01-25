@@ -12,7 +12,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     
     try:
         req_body = req.get_json()
-        logging.info(f"Received request body: {req_body}")  # Log the request body
+        logging.info(f"Received request body: {req_body}")
         
         email = req_body.get('email')
         location_id = req_body.get('location_id')
@@ -36,7 +36,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             )
 
         try:
-            # Get payment setup first to preserve values
             payment_setup = db_client.get_payment_setup(email)
             if not payment_setup:
                 return func.HttpResponse(
@@ -45,7 +44,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                     status_code=404
                 )
 
-            # Query for existing location
             query = "SELECT * FROM c WHERE c.id = @location_id AND c.type = 'location' AND c.user_id = @user_id"
             parameters = [
                 {"name": "@location_id", "value": location_id},
@@ -73,7 +71,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             existing_location['address'] = location_address
             existing_location['updated_at'] = datetime.utcnow().isoformat()
 
-            # Update location
             result = db_client.location_container.replace_item(
                 item=existing_location['id'],
                 body=existing_location
