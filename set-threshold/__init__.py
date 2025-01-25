@@ -37,7 +37,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 status_code=400
             )
 
-        # Get existing payment setup first
         payment_setup = db_client.get_payment_setup(email)
         if not payment_setup:
             return func.HttpResponse(
@@ -46,11 +45,9 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 status_code=404
             )
 
-        # Log current values for debugging
         logging.info(f"Current payment setup: {payment_setup}")
         logging.info(f"Current num_locations: {payment_setup.get('num_locations', 0)}")
 
-        # Calculate threshold
         if plan_type == PlanType.CUSTOM.value:
             threshold_amount = int(custom_threshold)
         else:
@@ -58,7 +55,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
 
         logging.info(f"Plan type: {plan_type}, Threshold amount: {threshold_amount}")
 
-        # Create updated payment setup while preserving existing values
         current_num_locations = payment_setup.get('num_locations', 0)
         current_pending_fee = payment_setup.get('pending_fee', 0)
         current_status = payment_setup.get('status', 'active')
@@ -67,7 +63,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         current_payment_methods = payment_setup.get('payment_methods')
         current_monthly_usage = payment_setup.get('monthly_usage')
 
-        # Log values being used for update
         logging.info(f"Updating with num_locations: {current_num_locations}")
 
         updated_setup = db_client.create_payment_setup(
@@ -77,13 +72,12 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             stripe_customer_id=current_stripe_customer_id,
             plan_type=plan_type,
             custom_threshold=int(custom_threshold) if plan_type == PlanType.CUSTOM.value else None,
-            num_locations=current_num_locations,  # Use the preserved value
+            num_locations=current_num_locations,
             pending_fee=current_pending_fee,
             payment_methods = current_payment_methods, 
             monthly_usage = current_monthly_usage,
         )
 
-        # Log updated setup for verification
         logging.info(f"Updated payment setup: {updated_setup}")
 
         return func.HttpResponse(
@@ -92,7 +86,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 "message": f"Successfully updated plan type and threshold for {email}",
                 "plan_type": plan_type,
                 "threshold": threshold_amount,
-                "num_locations": current_num_locations,  # Include in response
+                "num_locations": current_num_locations,
                 "updated_setup": updated_setup
             }),
             mimetype="application/json",

@@ -17,7 +17,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         logging.info(f"Request body: {req_body}")
         
         email = req_body.get('email')
-        credit_amount = req_body.get('amount')  # Frontend sends dollar amount (e.g., 50 for $50.00)
+        credit_amount = req_body.get('amount')
         payment_method_id = req_body.get('payment_method_id')
 
         if not all([email, credit_amount]):
@@ -76,10 +76,8 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 )
 
         try:
-            # Convert dollar amount to cents for both Stripe and token storage
             amount_in_cents = credit_amount * 100  # 50 becomes 5000 cents
             
-            # Create Stripe payment
             payment_intent = stripe.PaymentIntent.create(
                 amount=amount_in_cents,
                 currency='usd',
@@ -95,24 +93,21 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             )
 
             if payment_intent.status == 'succeeded':
-                # Create transaction record with cents amount
                 transaction = db_client.create_transaction(
                     user_id=email,
-                    amount=amount_in_cents,  # Storing 5000 cents
+                    amount=amount_in_cents,
                     transaction_type="credit_purchase",
-                    tokens=amount_in_cents,  # Storing 5000 cents
+                    tokens=amount_in_cents,
                     status='completed',
                     stripe_session_id=payment_intent.id
                 )
 
-                # Update token balance with cents
-                current_balance = payment_setup.get('tokens', 0)  # Already in cents
-                new_balance = current_balance + amount_in_cents  # Adding cents (5000)
+                current_balance = payment_setup.get('tokens', 0)
+                new_balance = current_balance + amount_in_cents
                 
-                # Update the tokens in database
                 db_client.update_tokens(
                     email=email,
-                    tokens=new_balance  # Storing in cents
+                    tokens=new_balance
                 )
 
                 return func.HttpResponse(
@@ -120,9 +115,9 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                         "status": "success",
                         "message": f"Successfully purchased ${credit_amount}.00 credits",
                         "details": {
-                            "previous_balance": current_balance,  # In cents
-                            "purchased_credits": amount_in_cents,  # In cents
-                            "new_balance": new_balance,  # In cents
+                            "previous_balance": current_balance,
+                            "purchased_credits": amount_in_cents,
+                            "new_balance": new_balance,
                             "transaction_id": payment_intent.id
                         }
                     }),

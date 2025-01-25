@@ -29,7 +29,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             )
 
         try:
-            # Get user payment document
             query = f"SELECT * FROM c WHERE c.id = 'payment_{email}'"
             items = list(db_client.payment_container.query_items(
                 query=query,
@@ -48,14 +47,11 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
 
             payment_doc = items[0]
             
-            # Calculate document fee
             fee = calculate_document_fee(pages)
             
-            # Update pending fee
             payment_doc['pending_fee'] = payment_doc.get('pending_fee', 0) + fee
             payment_doc['updated_at'] = datetime.now(timezone.utc).isoformat()
             
-            # Update payment document in database
             db_client.payment_container.replace_item(
                 item=payment_doc['id'],
                 body=payment_doc

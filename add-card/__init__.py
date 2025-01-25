@@ -26,7 +26,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             )
 
         try:
-            # Get existing payment setup
             payment_setup = db_client.get_payment_setup(email)
             
             if not payment_setup:
@@ -39,27 +38,22 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                     status_code=404
                 )
 
-            # Attach payment method to customer using modern API
             payment_method = stripe.PaymentMethod.attach(
                 payment_method_id,
                 customer=payment_setup['stripe_customer_id']
             )
 
-            # Update payment_methods array
             current_payment_methods = payment_setup.get('payment_methods', [])
             current_payment_methods.append(payment_method.id)
             
-            # Update payment setup
             payment_setup['payment_methods'] = current_payment_methods
             payment_setup['updated_at'] = datetime.utcnow().isoformat()
 
-            # Save to database
             result = db_client.payment_container.replace_item(
                 item=payment_setup['id'],
                 body=payment_setup
             )
 
-            # Get card details for response
             card_details = {
                 'id': payment_method.id,
                 'brand': payment_method.card.brand,

@@ -1,4 +1,3 @@
-# billing-update/__init__.py
 import azure.functions as func
 import logging
 from datetime import datetime, timezone
@@ -62,12 +61,10 @@ async def main(mytimer: func.TimerRequest) -> None:
         billing_service = BillingService()
         current_time = datetime.now(timezone.utc).isoformat()
         
-        # Get active locations
         active_locations = billing_service.db_client.get_active_locations()
         total_locations = len(active_locations)
         logging.info(f"Starting to process {total_locations} active locations")
         
-        # Process locations
         user_fees = {}
         failed_locations = []
         
@@ -83,13 +80,11 @@ async def main(mytimer: func.TimerRequest) -> None:
                 failed_locations.append(location['id'])
                 continue
         
-        # Log location processing results
         successful_locations = total_locations - len(failed_locations)
         logging.info(f"Successfully processed {successful_locations}/{total_locations} locations")
         if failed_locations:
             logging.error(f"Failed to process locations: {', '.join(failed_locations)}")
         
-        # Process user billing
         failed_users = []
         for user_id, fee in user_fees.items():
             try:
@@ -98,14 +93,12 @@ async def main(mytimer: func.TimerRequest) -> None:
                 failed_users.append(user_id)
                 continue
         
-        # Log user processing results
         total_users = len(user_fees)
         successful_users = total_users - len(failed_users)
         logging.info(f"Successfully processed {successful_users}/{total_users} users")
         if failed_users:
             logging.error(f"Failed to process users: {', '.join(failed_users)}")
         
-        # Log completion
         end_time = datetime.utcnow()
         duration = (end_time - start_time).total_seconds()
         logging.info(f'Billing update completed in {duration:.2f} seconds')

@@ -52,7 +52,6 @@ async def process_user_fee(db_client: CosmosDBClient, payment_setup):
             logging.info(f"Successfully processed payment for user: {payment_setup['user_id']}, remaining tokens: {new_tokens}")
             return result
         else:
-            # Block user and deactivate all locations
             payment_setup['is_blocked'] = True
             payment_setup['updated_at'] = datetime.utcnow().isoformat()
             
@@ -61,7 +60,6 @@ async def process_user_fee(db_client: CosmosDBClient, payment_setup):
                 body=payment_setup
             )
 
-            # Get and deactivate all active locations
             locations = db_client.get_locations(payment_setup['user_id'])
             deactivated_locations = []
             

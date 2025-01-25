@@ -35,11 +35,9 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 status_code=404
             )
 
-        # Calculate summary statistics
         total_amount = sum(log.get('amount', 0) for log in payment_logs)
         total_tokens = sum(log.get('tokens_included', 0) for log in payment_logs)
         
-        # Process payment logs
         processed_logs = []
         for log in payment_logs:
             processed_logs.append({

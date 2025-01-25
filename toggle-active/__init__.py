@@ -25,7 +25,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             )
 
         try:
-            # Get payment setup first
             payment_setup = db_client.get_payment_setup(email)
             if not payment_setup:
                 return func.HttpResponse(
@@ -37,7 +36,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                     status_code=404
                 )
 
-            # Query for existing location
             query = "SELECT * FROM c WHERE c.id = @location_id AND c.type = 'location' AND c.user_id = @user_id"
             parameters = [
                 {"name": "@location_id", "value": location_id},
@@ -63,33 +61,26 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             existing_location = items[0]
             current_time = datetime.now(timezone.utc).isoformat()
 
-            # Update num_locations in payment setup
             current_num_locations = payment_setup.get('num_locations', 0)
             if existing_location['is_active']:
-                # Deactivating
                 new_num_locations = max(0, current_num_locations - 1)
             else:
-                # Activating
                 new_num_locations = current_num_locations + 1
 
             payment_setup['num_locations'] = new_num_locations
             payment_setup['updated_at'] = current_time
             
-            # Update payment setup
             db_client.payment_container.replace_item(
                 item=payment_setup['id'],
                 body=payment_setup
             )
 
-            # Toggle the is_active status
             existing_location['is_active'] = not existing_location['is_active']
             existing_location['updated_at'] = current_time
             
-            # Record deactivation time if deactivating
             if not existing_location['is_active']:
                 existing_location['deactivated_at'] = current_time
 
-            # Update the location in Cosmos DB
             result = db_client.location_container.replace_item(
                 item=existing_location['id'],
                 body=existing_location
